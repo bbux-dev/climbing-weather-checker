@@ -13,6 +13,8 @@ from climb_weather import (
     HTML_BACKGROUND_IMAGE_PATH,
     miles_between,
     read_cached_payload,
+    render_week_html_report,
+    report_dates,
     render_html_report,
     sort_rows,
     write_html_report,
@@ -74,6 +76,13 @@ class ClimbabilityScoreTest(unittest.TestCase):
 
         self.assertAlmostEqual(auburn_quarry.lat, 38.91231)
         self.assertAlmostEqual(auburn_quarry.lon, -121.03567)
+
+    def test_report_dates_returns_next_seven_days(self):
+        dates = report_dates(dt.date(2026, 9, 5))
+
+        self.assertEqual(len(dates), 7)
+        self.assertEqual(dates[0], dt.date(2026, 9, 5))
+        self.assertEqual(dates[-1], dt.date(2026, 9, 11))
 
     def test_default_sort_is_score_then_distance(self):
         rows = [
@@ -144,10 +153,25 @@ class ClimbabilityScoreTest(unittest.TestCase):
             self.assertTrue(output_path.exists())
             self.assertIn(expected_background_path, report)
 
+    def test_week_html_report_embeds_days_overview_and_tabs(self):
+        start_date = dt.date(2026, 9, 5)
+        dates = [date.isoformat() for date in report_dates(start_date)]
+        rows_by_date = {date: [sample_ranked_row(date)] for date in dates}
 
-def sample_ranked_row():
+        report = render_week_html_report(rows_by_date, start_date, [])
+
+        self.assertIn('"days":', report)
+        self.assertIn('"dates":', report)
+        self.assertIn("Top ${reportData.overviewTopAreaCount} Places This Week", report)
+        self.assertIn('data-view="overview"', report)
+        self.assertIn("scoreTooltip", report)
+        self.assertIn("Sort day reports by distance", report)
+
+
+def sample_ranked_row(date: str = "2026-09-05"):
     return {
         "name": "Test <Crag>",
+        "date": date,
         "lat": 38.0,
         "lon": -121.0,
         "score": 100,

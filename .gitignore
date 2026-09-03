@@ -1,3 +1,6 @@
 .weather_cache/
 __pycache__/
 *.pyc
+climb-weather-*.html
+reports/
+.idea/

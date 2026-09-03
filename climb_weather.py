@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import html
 import json
 import math
+import os
 from pathlib import Path
 import sys
 import urllib.error
@@ -18,10 +20,18 @@ from typing import Any
 
 
 FOLSOM_CA = (38.67796, -121.17606)
+ORIGINS = {
+    "Folsom, CA": FOLSOM_CA,
+    "Auburn, CA": (38.8966, -121.0769),
+    "Cameron Park, CA": (38.6688, -120.9872),
+}
 CACHE_DIR = Path(".weather_cache")
+DEFAULT_HTML_REPORT_TEMPLATE = "climb-weather-{date}.html"
+HTML_BACKGROUND_IMAGE_PATH = Path("assets/local-crag-background.png")
 EARTH_RADIUS_MILES = 3958.8
 ESTIMATED_TRAVEL_SPEED_MPH = 35.0
 DRIVE_TIME_ROUNDING_INCREMENT_HOURS = 0.5
+MIN_NONZERO_DRIVE_TIME_HOURS = 0.5
 BASE_CLIMBABILITY_SCORE = 100.0
 MIN_CLIMBABILITY_SCORE = 0
 MAX_CLIMBABILITY_SCORE = 100
@@ -58,6 +68,7 @@ AREAS = [
     ClimbingArea("The Grotto (Rawhide, CA)", 37.9491, -120.4158, "Rawhide basalt"),
     ClimbingArea("Yosemite Valley (Yosemite, CA)", 37.7456, -119.5936, "Yosemite climbing"),
     ClimbingArea("Castle Rock State Park", 37.2303, -122.0956, "Santa Cruz Mountains"),
+    ClimbingArea("Auburn Quarry (Auburn, CA)", 38.91231, -121.03567, "Auburn limestone sport climbing"),
 ]
 
 
@@ -81,10 +92,16 @@ def miles_between(origin: tuple[float, float], dest: tuple[float, float]) -> flo
 
 
 def estimated_drive_time_hours(distance_miles: float) -> float:
+    if distance_miles <= 0:
+        return 0.0
+
     raw_hours = distance_miles / ESTIMATED_TRAVEL_SPEED_MPH
     increments = raw_hours / DRIVE_TIME_ROUNDING_INCREMENT_HOURS
     rounded_increments = math.floor(increments + 0.5)
-    return rounded_increments * DRIVE_TIME_ROUNDING_INCREMENT_HOURS
+    return max(
+        MIN_NONZERO_DRIVE_TIME_HOURS,
+        rounded_increments * DRIVE_TIME_ROUNDING_INCREMENT_HOURS,
+    )
 
 
 def format_distance_time(distance_miles: float) -> str:
@@ -241,6 +258,8 @@ def rank_area(
 
     return {
         "name": area.name,
+        "lat": area.lat,
+        "lon": area.lon,
         "score": score,
         "distance_miles": distance_miles,
         "drive_time_hours_estimate": estimated_drive_time_hours(distance_miles),
@@ -282,12 +301,476 @@ def print_table(rows: list[dict[str, Any]], date: dt.date) -> None:
         )
 
 
+def score_class(score: int) -> str:
+    if score >= 90:
+        return "excellent"
+    if score >= 75:
+        return "good"
+    if score >= 50:
+        return "iffy"
+    return "poor"
+
+
+def render_html_report(
+    rows: list[dict[str, Any]],
+    date: dt.date,
+    failures: list[str],
+    background_image_path: str = HTML_BACKGROUND_IMAGE_PATH.as_posix(),
+    by_distance: bool = False,
+) -> str:
+    generated_at = dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+    best_area = rows[0]["name"] if rows else "No areas ranked"
+    payload = {
+        "date": date.isoformat(),
+        "generatedAt": generated_at,
+        "bestArea": best_area,
+        "defaultOrigin": "Folsom, CA",
+        "initialSortByDistance": by_distance,
+        "travelSpeedMph": ESTIMATED_TRAVEL_SPEED_MPH,
+        "driveTimeRoundingIncrementHours": DRIVE_TIME_ROUNDING_INCREMENT_HOURS,
+        "minNonzeroDriveTimeHours": MIN_NONZERO_DRIVE_TIME_HOURS,
+        "earthRadiusMiles": EARTH_RADIUS_MILES,
+        "origins": [
+            {"name": name, "lat": coords[0], "lon": coords[1]}
+            for name, coords in ORIGINS.items()
+        ],
+        "areas": rows,
+        "errors": failures,
+    }
+    payload_json = (
+        json.dumps(payload, sort_keys=True)
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+    )
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Climbability Forecast for {html.escape(date.isoformat())}</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #f5f2ec;
+      --text: #20231f;
+      --muted: #686c61;
+      --line: #d9d1c4;
+      --panel: #fffdfa;
+      --excellent: #1f7a4d;
+      --good: #587d2f;
+      --iffy: #a46418;
+      --poor: #a23b3b;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background:
+        linear-gradient(rgba(22, 27, 22, 0.18), rgba(245, 242, 236, 0.92) 420px),
+        url("{html.escape(background_image_path, quote=True)}") top center / 100% auto no-repeat,
+        var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }}
+    main {{
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 48px;
+    }}
+    header {{
+      min-height: 300px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      color: #fffdfa;
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
+      padding-bottom: 28px;
+      margin-bottom: 20px;
+    }}
+    h1 {{
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 4rem);
+      line-height: 1;
+      letter-spacing: 0;
+    }}
+    .summary {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 18px;
+      color: #fffdfa;
+    }}
+    .summary > span {{
+      border: 1px solid rgba(255, 253, 250, 0.35);
+      background: rgba(32, 35, 31, 0.42);
+      padding: 6px 10px;
+      border-radius: 6px;
+      backdrop-filter: blur(4px);
+    }}
+    .controls {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 12px;
+      background: rgba(255, 253, 250, 0.9);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }}
+    .control {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-weight: 700;
+    }}
+    select {{
+      appearance: none;
+      background: #fffdfa;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--text);
+      font: inherit;
+      font-weight: 700;
+      padding: 7px 34px 7px 10px;
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+        linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+      background-position:
+        calc(100% - 17px) 50%,
+        calc(100% - 12px) 50%;
+      background-size: 5px 5px, 5px 5px;
+      background-repeat: no-repeat;
+    }}
+    input[type="checkbox"] {{
+      width: 18px;
+      height: 18px;
+      accent-color: var(--excellent);
+    }}
+    .report-grid {{
+      display: grid;
+      gap: 12px;
+    }}
+    .area-card {{
+      display: grid;
+      grid-template-columns: 48px minmax(220px, 1fr) 112px minmax(280px, 0.9fr);
+      gap: 18px;
+      align-items: center;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-left: 7px solid var(--good);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+    }}
+    .area-card.excellent {{ border-left-color: var(--excellent); }}
+    .area-card.good {{ border-left-color: var(--good); }}
+    .area-card.iffy {{ border-left-color: var(--iffy); }}
+    .area-card.poor {{ border-left-color: var(--poor); }}
+    .rank {{
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 1.05rem;
+    }}
+    h2 {{
+      margin: 0;
+      font-size: 1.25rem;
+      letter-spacing: 0;
+    }}
+    .notes, .reason {{
+      margin: 4px 0 0;
+      color: var(--muted);
+    }}
+    .reason {{
+      color: var(--text);
+      font-weight: 600;
+    }}
+    .score-block {{
+      text-align: right;
+    }}
+    .score {{
+      font-size: 2.1rem;
+      line-height: 1;
+      font-weight: 800;
+    }}
+    .score-label {{
+      color: var(--muted);
+      font-size: 0.85rem;
+    }}
+    .metrics {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin: 0;
+    }}
+    .metrics div {{
+      border-left: 1px solid var(--line);
+      padding-left: 10px;
+      min-width: 0;
+    }}
+    dt {{
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }}
+    dd {{
+      margin: 2px 0 0;
+      font-weight: 700;
+      white-space: nowrap;
+    }}
+    .warnings {{
+      margin-top: 24px;
+      border: 1px solid #e2b7a0;
+      background: #fff8f3;
+      border-radius: 8px;
+      padding: 16px;
+    }}
+    .warnings h2 {{
+      font-size: 1rem;
+    }}
+    @media (max-width: 860px) {{
+      .area-card {{
+        grid-template-columns: 44px 1fr 92px;
+      }}
+      .metrics {{
+        grid-column: 2 / -1;
+      }}
+    }}
+    @media (max-width: 620px) {{
+      main {{
+        width: min(100% - 20px, 1120px);
+        padding-top: 18px;
+      }}
+      header {{
+        min-height: 240px;
+      }}
+      .area-card {{
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }}
+      .rank, .score-block {{
+        text-align: left;
+      }}
+      .metrics {{
+        grid-column: auto;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+      .metrics div {{
+        border-left: 0;
+        padding-left: 0;
+        border-top: 1px solid var(--line);
+        padding-top: 8px;
+      }}
+      .controls {{
+        align-items: stretch;
+      }}
+      .control {{
+        width: 100%;
+        justify-content: flex-start;
+      }}
+      select {{
+        min-width: 0;
+        max-width: 210px;
+      }}
+    }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Climbability Forecast</h1>
+      <div class="summary">
+        <span>Date: {html.escape(date.isoformat())}</span>
+        <span>Origin: <span id="origin-summary">Folsom, CA</span></span>
+        <span>Best: <span id="best-summary">{html.escape(best_area)}</span></span>
+        <span>Generated: {html.escape(generated_at)}</span>
+      </div>
+    </header>
+    <section class="controls" aria-label="Report controls">
+      <label class="control" for="origin-select">
+        Origin
+        <select id="origin-select"></select>
+      </label>
+      <label class="control">
+        <input id="sort-by-distance" type="checkbox">
+        Sort by distance
+      </label>
+    </section>
+    <section id="report-grid" class="report-grid"></section>
+    <section id="warnings"></section>
+  </main>
+  <script id="report-data" type="application/json">{payload_json}</script>
+  <script>
+    const reportData = JSON.parse(document.getElementById("report-data").textContent);
+    const originSelect = document.getElementById("origin-select");
+    const sortByDistance = document.getElementById("sort-by-distance");
+    const reportGrid = document.getElementById("report-grid");
+    const originSummary = document.getElementById("origin-summary");
+    const bestSummary = document.getElementById("best-summary");
+    const warnings = document.getElementById("warnings");
+
+    function escapeHtml(value) {{
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }}
+
+    function milesBetween(origin, area) {{
+      const lat1 = origin.lat * Math.PI / 180;
+      const lon1 = origin.lon * Math.PI / 180;
+      const lat2 = area.lat * Math.PI / 180;
+      const lon2 = area.lon * Math.PI / 180;
+      const dlat = lat2 - lat1;
+      const dlon = lon2 - lon1;
+      const a = Math.sin(dlat / 2) ** 2
+        + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dlon / 2) ** 2;
+      return reportData.earthRadiusMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }}
+
+    function estimatedDriveTimeHours(distanceMiles) {{
+      if (distanceMiles <= 0) return 0;
+      const rawHours = distanceMiles / reportData.travelSpeedMph;
+      const increments = rawHours / reportData.driveTimeRoundingIncrementHours;
+      return Math.max(
+        reportData.minNonzeroDriveTimeHours,
+        Math.floor(increments + 0.5) * reportData.driveTimeRoundingIncrementHours
+      );
+    }}
+
+    function formatDistanceTime(distanceMiles) {{
+      const hours = estimatedDriveTimeHours(distanceMiles);
+      const time = Number.isInteger(hours) ? `${{hours.toFixed(0)}}h` : `${{hours.toFixed(1)}}h`;
+      return `${{distanceMiles.toFixed(0)}}/~${{time}}`;
+    }}
+
+    function scoreClass(score) {{
+      if (score >= 90) return "excellent";
+      if (score >= 75) return "good";
+      if (score >= 50) return "iffy";
+      return "poor";
+    }}
+
+    function selectedOrigin() {{
+      return reportData.origins.find((origin) => origin.name === originSelect.value) || reportData.origins[0];
+    }}
+
+    function rankedAreas() {{
+      const origin = selectedOrigin();
+      const areas = reportData.areas.map((area) => ({{
+        ...area,
+        distance_miles: milesBetween(origin, area),
+      }}));
+
+      if (sortByDistance.checked) {{
+        areas.sort((a, b) => a.distance_miles - b.distance_miles || b.score - a.score);
+      }} else {{
+        areas.sort((a, b) => b.score - a.score || a.distance_miles - b.distance_miles);
+      }}
+
+      return areas;
+    }}
+
+    function renderWarnings() {{
+      if (!reportData.errors.length) {{
+        warnings.innerHTML = "";
+        return;
+      }}
+      const items = reportData.errors.map((error) => `<li>${{escapeHtml(error)}}</li>`).join("");
+      warnings.innerHTML = `<section class="warnings"><h2>Warnings</h2><ul>${{items}}</ul></section>`;
+    }}
+
+    function render() {{
+      const origin = selectedOrigin();
+      const areas = rankedAreas();
+      originSummary.textContent = origin.name;
+      bestSummary.textContent = areas.length ? areas[0].name : "No areas ranked";
+      reportGrid.innerHTML = areas.map((area, index) => {{
+        const reasons = escapeHtml(area.reasons.join("; "));
+        const temp = `${{area.temp_min_f.toFixed(0)}}-${{area.temp_max_f.toFixed(0)}}F`;
+        const precip = `${{area.precipitation_in.toFixed(2)}} in / ${{area.precipitation_probability.toFixed(0)}}%`;
+        const wind = `${{area.wind_mph.toFixed(0)}} mph`;
+        return `
+      <article class="area-card ${{scoreClass(area.score)}}">
+        <div class="rank">#${{index + 1}}</div>
+        <div class="area-main">
+          <h2>${{escapeHtml(area.name)}}</h2>
+          <p class="notes">${{escapeHtml(area.notes)}}</p>
+          <p class="reason">${{reasons}}</p>
+        </div>
+        <div class="score-block">
+          <div class="score">${{area.score}}%</div>
+          <div class="score-label">climbable</div>
+        </div>
+        <dl class="metrics">
+          <div><dt>Miles/Time</dt><dd>${{formatDistanceTime(area.distance_miles)}}</dd></div>
+          <div><dt>Temp</dt><dd>${{temp}}</dd></div>
+          <div><dt>Precip</dt><dd>${{precip}}</dd></div>
+          <div><dt>Wind</dt><dd>${{wind}}</dd></div>
+        </dl>
+      </article>`;
+      }}).join("");
+    }}
+
+    for (const origin of reportData.origins) {{
+      const option = document.createElement("option");
+      option.value = origin.name;
+      option.textContent = origin.name;
+      option.selected = origin.name === reportData.defaultOrigin;
+      originSelect.appendChild(option);
+    }}
+
+    sortByDistance.checked = reportData.initialSortByDistance;
+    originSelect.addEventListener("change", render);
+    sortByDistance.addEventListener("change", render);
+    renderWarnings();
+    render();
+  </script>
+</body>
+</html>
+"""
+
+
+def write_html_report(
+    rows: list[dict[str, Any]],
+    date: dt.date,
+    failures: list[str],
+    output_path: Path,
+    by_distance: bool = False,
+) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    background_path = os.path.relpath(HTML_BACKGROUND_IMAGE_PATH, start=output_path.parent)
+    report = render_html_report(
+        rows,
+        date,
+        failures,
+        background_image_path=Path(background_path).as_posix(),
+        by_distance=by_distance,
+    )
+    output_path.write_text(report, encoding="utf-8")
+    return output_path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Rank nearby climbing areas by weather climbability for a date."
     )
     parser.add_argument("date", type=parse_date, help="Forecast date in YYYY-MM-DD format")
-    parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+    output_group.add_argument(
+        "--html",
+        nargs="?",
+        const="",
+        metavar="PATH",
+        help="Write a styled HTML report, optionally to PATH",
+    )
     parser.add_argument(
         "--by-distance",
         action="store_true",
@@ -312,6 +795,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.json:
         print(json.dumps({"date": args.date.isoformat(), "areas": rows, "errors": failures}, indent=2))
+    elif args.html is not None:
+        output_path = Path(args.html) if args.html else Path(DEFAULT_HTML_REPORT_TEMPLATE.format(date=args.date.isoformat()))
+        write_html_report(rows, args.date, failures, output_path, by_distance=args.by_distance)
+        print(f"Wrote HTML report to {output_path}")
     else:
         print_table(rows, args.date)
         if failures:

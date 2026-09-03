@@ -20,6 +20,13 @@ Sort by distance from Folsom first:
 ./climb_weather.py 2026-09-05 --by-distance
 ```
 
+Write a styled HTML report:
+
+```bash
+./climb_weather.py 2026-09-05 --html
+./climb_weather.py 2026-09-05 --html reports/saturday.html
+```
+
 Refresh cached weather data:
 
 ```bash
@@ -37,6 +44,11 @@ Results are sorted by highest climbability, then shortest straight-line distance
 The `Miles/Time` column shows straight-line miles plus a rough drive-time estimate using `miles / 35`, rounded to the nearest half hour.
 
 Weather data comes from Open-Meteo's no-key forecast API.
+
+## HTML Reports
+
+`--html` writes a local report file using `assets/local-crag-background.png` for the climbing-themed background. When no path is passed, the file is named `climb-weather-YYYY-MM-DD.html`.
+The report embeds its weather and crag data as JSON, so the page can recalculate distances locally. Use the page controls to switch the origin between Folsom, Auburn, and Cameron Park, or to sort by distance.
 
 ## Cache
 

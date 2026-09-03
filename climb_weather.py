@@ -271,8 +271,9 @@ def rank_area(
     date: dt.date,
     origin: tuple[float, float],
     refresh: bool = False,
+    cache_dir: Path = CACHE_DIR,
 ) -> dict[str, Any]:
-    daily = fetch_daily_forecast(area, date, refresh=refresh)
+    daily = fetch_daily_forecast(area, date, refresh=refresh, cache_dir=cache_dir)
     return rank_area_from_daily(area, date, daily, 0, origin)
 
 
@@ -318,6 +319,7 @@ def rank_week(
     origin: tuple[float, float],
     refresh: bool = False,
     days: int = HTML_REPORT_DAYS,
+    cache_dir: Path = CACHE_DIR,
 ) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     dates = report_dates(start_date, days)
     end_date = dates[-1]
@@ -326,7 +328,7 @@ def rank_week(
 
     for area in AREAS:
         try:
-            daily = fetch_forecast(area, start_date, end_date, refresh=refresh)
+            daily = fetch_forecast(area, start_date, end_date, refresh=refresh, cache_dir=cache_dir)
         except RuntimeError as exc:
             failures.append(str(exc))
             continue
@@ -1369,10 +1371,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Fetch fresh weather data and update the local cache",
     )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=CACHE_DIR,
+        help="Directory for cached weather API responses",
+    )
     args = parser.parse_args(argv)
 
     if args.html is not None:
-        rows_by_date, failures = rank_week(args.date, FOLSOM_CA, refresh=args.refresh)
+        rows_by_date, failures = rank_week(args.date, FOLSOM_CA, refresh=args.refresh, cache_dir=args.cache_dir)
         output_path = Path(args.html) if args.html else Path(DEFAULT_HTML_REPORT_TEMPLATE.format(date=args.date.isoformat()))
         write_week_html_report(rows_by_date, args.date, failures, output_path, by_distance=args.by_distance)
         print(f"Wrote HTML report to {output_path}")
@@ -1382,7 +1390,7 @@ def main(argv: list[str] | None = None) -> int:
     failures = []
     for area in AREAS:
         try:
-            rows.append(rank_area(area, args.date, FOLSOM_CA, refresh=args.refresh))
+            rows.append(rank_area(area, args.date, FOLSOM_CA, refresh=args.refresh, cache_dir=args.cache_dir))
         except RuntimeError as exc:
             failures.append(str(exc))
 

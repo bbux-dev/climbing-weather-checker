@@ -11,7 +11,10 @@ from climb_weather import (
     estimated_drive_time_hours,
     format_distance_time,
     HTML_BACKGROUND_IMAGE_PATH,
+    ClimbingArea,
+    forecast_url,
     miles_between,
+    rank_area,
     read_cached_payload,
     render_week_html_report,
     report_dates,
@@ -124,6 +127,28 @@ class ClimbabilityScoreTest(unittest.TestCase):
             cache_path_for(url, cache_dir).write_text("not json", encoding="utf-8")
 
             self.assertIsNone(read_cached_payload(url, cache_dir))
+
+    def test_rank_area_uses_custom_cache_dir(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            area = ClimbingArea("Cached Crag", 38.0, -121.0, "test")
+            date = dt.date(2026, 9, 5)
+            payload = {
+                "daily": {
+                    "time": [date.isoformat()],
+                    "temperature_2m_max": [70],
+                    "temperature_2m_min": [50],
+                    "precipitation_sum": [0],
+                    "precipitation_probability_max": [0],
+                    "wind_speed_10m_max": [8],
+                }
+            }
+            write_cached_payload(forecast_url(area, date, date), payload, cache_dir)
+
+            row = rank_area(area, date, (38.0, -121.0), cache_dir=cache_dir)
+
+            self.assertEqual(row["score"], 100)
+            self.assertEqual(row["name"], "Cached Crag")
 
     def test_html_report_escapes_content_and_uses_background(self):
         rows = [sample_ranked_row()]

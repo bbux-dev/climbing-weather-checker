@@ -34,6 +34,12 @@ Refresh cached weather data:
 ./climb_weather.py 2026-09-05 --refresh
 ```
 
+Use a different cache directory:
+
+```bash
+./climb_weather.py --html --cache-dir ../.weather_cache
+```
+
 ## Scoring
 
 The baseline rule is:
@@ -56,3 +62,7 @@ The report embeds its weather and crag data as JSON, so the page can recalculate
 ## Cache
 
 Forecast API responses are cached locally in `.weather_cache/` by request URL. Re-running the same date or 7-day HTML range uses cached data unless `--refresh` is passed.
+
+## GitHub Pages
+
+The workflow in `.github/workflows/pages.yml` runs tests, builds `site/index.html`, copies the report background asset, and deploys the static `site/` directory to GitHub Pages. It runs on pushes to `main`, on a daily schedule, and manually through `workflow_dispatch`.

@@ -168,10 +168,9 @@ def fetch_forecast(
     cache_dir: Path = CACHE_DIR,
 ) -> dict[str, Any]:
     url = forecast_url(area, start_date, end_date)
-    if not refresh:
-        cached_payload = read_cached_payload(url, cache_dir)
-        if cached_payload is not None:
-            return daily_from_payload(area, start_date, end_date, cached_payload)
+    cached_payload = read_cached_payload(url, cache_dir)
+    if cached_payload is not None and not refresh:
+        return daily_from_payload(area, start_date, end_date, cached_payload)
 
     request = urllib.request.Request(url, headers={"User-Agent": "climb-weather-prototype/0.1"})
 
@@ -179,9 +178,13 @@ def fetch_forecast(
         with urllib.request.urlopen(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
+        if cached_payload is not None:
+            return daily_from_payload(area, start_date, end_date, cached_payload)
         detail = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"{area.name}: weather API returned {exc.code}: {detail}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
+        if cached_payload is not None:
+            return daily_from_payload(area, start_date, end_date, cached_payload)
         raise RuntimeError(f"{area.name}: weather API request failed: {exc}") from exc
 
     write_cached_payload(url, payload, cache_dir)

@@ -2,7 +2,9 @@ import datetime as dt
 import os
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
+from unittest.mock import patch
 
 from climb_weather import (
     AREAS,
@@ -13,6 +15,7 @@ from climb_weather import (
     HTML_BACKGROUND_IMAGE_PATH,
     ClimbingArea,
     forecast_url,
+    fetch_forecast,
     miles_between,
     rank_area,
     read_cached_payload,
@@ -149,6 +152,19 @@ class ClimbabilityScoreTest(unittest.TestCase):
 
             self.assertEqual(row["score"], 100)
             self.assertEqual(row["name"], "Cached Crag")
+
+    def test_refresh_falls_back_to_cache_when_api_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_dir = Path(temp_dir)
+            area = ClimbingArea("Cached Crag", 38.0, -121.0, "test")
+            date = dt.date(2026, 9, 5)
+            payload = {"daily": {"time": [date.isoformat()]}}
+            write_cached_payload(forecast_url(area, date, date), payload, cache_dir)
+
+            with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("offline")):
+                daily = fetch_forecast(area, date, date, refresh=True, cache_dir=cache_dir)
+
+            self.assertEqual(daily, payload["daily"])
 
     def test_html_report_escapes_content_and_uses_background(self):
         rows = [sample_ranked_row()]

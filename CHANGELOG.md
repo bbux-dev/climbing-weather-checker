@@ -10,6 +10,9 @@ This project tracks user-facing climbing weather features as they are added.
 - Link weather values in HTML reports to NOAA/NWS point forecasts for verification.
 - Add sandstone wet-weather protection that forces sandstone areas to `0%` on rain days and for the next 2 days after rain.
 - Mark Castle Rock State Park as sandstone.
+- Add climbing type metadata for sport, trad, top-rope, and bouldering.
+- Add `--types` filtering with boulder-only areas excluded by default.
+- Add Sacramento-area bouldering locations for Rocklin, Giant Boulder Park, Nut Tree Boulders, Putah Creek, and Pie Shop Bouldering.
 
 ## 2026-09-03
 

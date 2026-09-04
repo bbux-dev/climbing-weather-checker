@@ -9,8 +9,11 @@ from unittest.mock import patch
 from climb_weather import (
     AREAS,
     cache_path_for,
+    ClimbingType,
+    ClimingType,
     climbability_score,
     estimated_drive_time_hours,
+    filter_areas_by_climbing_type,
     format_distance_time,
     HTML_BACKGROUND_IMAGE_PATH,
     ClimbingArea,
@@ -23,6 +26,7 @@ from climb_weather import (
     read_cached_payload,
     ROCK_TYPE_SANDSTONE,
     render_week_html_report,
+    parse_climbing_types,
     report_dates,
     render_html_report,
     sandstone_wet_weather_checker,
@@ -96,6 +100,46 @@ class ClimbabilityScoreTest(unittest.TestCase):
     def test_all_areas_have_mountain_project_links(self):
         for area in AREAS:
             self.assertTrue(area.mountain_project_url.startswith("https://www.mountainproject.com/"))
+
+    def test_climing_type_alias_matches_corrected_enum_name(self):
+        self.assertIs(ClimingType, ClimbingType)
+
+    def test_sacramento_area_bouldering_locations_are_included(self):
+        expected = {
+            "Rocklin (Deer Creek Park)": (38.78712, -121.24077),
+            "Giant Boulder Park (Rocklin, CA)": (38.83052, -121.257),
+            "The Nut Tree Boulders (Vacaville, CA)": (38.38524, -121.98691),
+            "Putah Creek (Vacaville, CA)": (38.5174, -122.056),
+            "Pie Shop Bouldering (South Lake Tahoe, CA)": (38.87495, -120.01322),
+        }
+
+        for name, coords in expected.items():
+            area = next(area for area in AREAS if area.name == name)
+            self.assertEqual(area.climbing_types, (ClimbingType.BOULDER,))
+            self.assertAlmostEqual(area.lat, coords[0])
+            self.assertAlmostEqual(area.lon, coords[1])
+
+    def test_default_climbing_type_filter_excludes_boulder_only_locations(self):
+        selected_types = parse_climbing_types(None)
+        areas = filter_areas_by_climbing_type(AREAS, selected_types)
+
+        self.assertNotIn("Rocklin (Deer Creek Park)", [area.name for area in areas])
+        self.assertIn("Auburn Quarry (Auburn, CA)", [area.name for area in areas])
+
+    def test_boulder_climbing_type_filter_includes_boulder_locations(self):
+        selected_types = parse_climbing_types(["boulder"])
+        areas = filter_areas_by_climbing_type(AREAS, selected_types)
+
+        self.assertIn("Rocklin (Deer Creek Park)", [area.name for area in areas])
+        self.assertIn("Pie Shop Bouldering (South Lake Tahoe, CA)", [area.name for area in areas])
+        self.assertNotIn("Auburn Quarry (Auburn, CA)", [area.name for area in areas])
+
+    def test_all_climbing_type_filter_includes_boulder_only_locations(self):
+        selected_types = parse_climbing_types(["all"])
+        areas = filter_areas_by_climbing_type(AREAS, selected_types)
+
+        self.assertIn("Rocklin (Deer Creek Park)", [area.name for area in areas])
+        self.assertIn("Auburn Quarry (Auburn, CA)", [area.name for area in areas])
 
     def test_weather_verification_url_uses_noaa_point_forecast(self):
         auburn_quarry = next(area for area in AREAS if area.name == "Auburn Quarry (Auburn, CA)")
@@ -237,8 +281,12 @@ class ClimbabilityScoreTest(unittest.TestCase):
         self.assertIn('"origins":', report)
         self.assertIn('"Auburn, CA"', report)
         self.assertIn('"Cameron Park, CA"', report)
+        self.assertIn('"allClimbingTypes":', report)
+        self.assertIn('"selectedClimbingTypes":', report)
         self.assertIn('id="origin-select"', report)
         self.assertIn('id="sort-by-distance"', report)
+        self.assertIn('id="type-controls"', report)
+        self.assertIn("matchesSelectedTypes", report)
 
     def test_write_html_report_creates_parent_and_relative_background_path(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -267,6 +315,10 @@ class ClimbabilityScoreTest(unittest.TestCase):
         self.assertIn("scoreTooltip", report)
         self.assertIn("areaLink", report)
         self.assertIn("weatherLink", report)
+        self.assertIn('id="type-controls"', report)
+        self.assertIn('"allClimbingTypes":', report)
+        self.assertIn('"selectedClimbingTypes":', report)
+        self.assertIn("matchesSelectedTypes", report)
         self.assertIn('target="_blank"', report)
         self.assertIn('rel="noopener noreferrer"', report)
         self.assertIn("Sort day reports by distance", report)
@@ -278,6 +330,7 @@ def sample_ranked_row(date: str = "2026-09-05"):
         "mountain_project_url": "https://www.mountainproject.com/area/test-crag",
         "weather_verification_url": "https://forecast.weather.gov/MapClick.php?lat=38.00000&lon=-121.00000",
         "rock_type": "granite",
+        "climbing_types": ["sport"],
         "date": date,
         "lat": 38.0,
         "lon": -121.0,

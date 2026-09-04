@@ -20,6 +20,16 @@ Sort by distance from Folsom first:
 ./climb_weather.py 2026-09-05 --by-distance
 ```
 
+Filter by climbing type:
+
+```bash
+./climb_weather.py 2026-09-05 --types sport trad
+./climb_weather.py 2026-09-05 --types boulder
+./climb_weather.py 2026-09-05 --types all
+```
+
+Boulder-only areas are excluded by default. The default type filter is `sport trad top-rope`.
+
 Write a styled HTML report:
 
 ```bash
@@ -58,7 +68,7 @@ Weather data comes from Open-Meteo's no-key forecast API.
 `--html` writes a 7-day local report file using `assets/local-crag-background.png` for the climbing-themed background. When no path is passed, the file is named `climb-weather-YYYY-MM-DD.html`.
 The report opens on a week overview grid showing the top 5 places as rows and the next 7 dates as columns. Cells are color-coded by climbability score, and hovering over a cell shows weather, distance, and scoring details.
 
-The report embeds its weather and crag data as JSON, so the page can recalculate distances locally. Crag names link to their Mountain Project area pages, and weather values link to NOAA/NWS point forecasts for verification. Use the page controls to switch the origin between Folsom, Auburn, and Cameron Park, or to sort day reports by distance. Click a day tab to show that date's full report.
+The report embeds its weather and crag data as JSON, so the page can recalculate distances and filter climbing types locally. Crag names link to their Mountain Project area pages, and weather values link to NOAA/NWS point forecasts for verification. Use the page controls to switch the origin between Folsom, Auburn, and Cameron Park, filter sport/trad/top-rope/bouldering, or sort day reports by distance. Click a day tab to show that date's full report.
 
 ## Cache
 

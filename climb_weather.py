@@ -16,6 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 
@@ -59,6 +60,28 @@ SANDSTONE_DRYOUT_DAYS_AFTER_RAIN = 2
 SANDSTONE_RAIN_THRESHOLD_IN = 0.0
 
 
+class ClimbingType(Enum):
+    SPORT = "sport"
+    TRAD = "trad"
+    TOP_ROPE = "top-rope"
+    BOULDER = "boulder"
+
+
+ClimingType = ClimbingType
+DEFAULT_CLIMBING_TYPES = (
+    ClimbingType.SPORT,
+    ClimbingType.TRAD,
+    ClimbingType.TOP_ROPE,
+)
+ALL_CLIMBING_TYPES = tuple(ClimbingType)
+CLIMBING_TYPE_ALIASES = {
+    climbing_type.value: climbing_type for climbing_type in ClimbingType
+}
+CLIMBING_TYPE_ALIASES["toprope"] = ClimbingType.TOP_ROPE
+CLIMBING_TYPE_ALIASES["top_rope"] = ClimbingType.TOP_ROPE
+ALL_CLIMBING_TYPES_TOKEN = "all"
+
+
 @dataclass(frozen=True)
 class ClimbingArea:
     name: str
@@ -66,82 +89,134 @@ class ClimbingArea:
     lon: float
     notes: str
     mountain_project_url: str
+    climbing_types: tuple[ClimbingType, ...] = DEFAULT_CLIMBING_TYPES
     rock_type: str = ROCK_TYPE_GRANITE
 
 
 AREAS = [
     ClimbingArea(
-        "Donner Summit",
-        39.3269,
-        -120.3186,
-        "Truckee granite",
-        "https://www.mountainproject.com/area/105733935/donner-summit",
+        name="Donner Summit",
+        lat=39.3269,
+        lon=-120.3186,
+        notes="Truckee granite",
+        mountain_project_url="https://www.mountainproject.com/area/105733935/donner-summit",
+        climbing_types=(ClimbingType.SPORT, ClimbingType.TRAD, ClimbingType.BOULDER),
     ),
     ClimbingArea(
-        "Sugar Loaf (Kyburz, CA)",
-        38.7738,
-        -120.2974,
-        "Highway 50 crags",
-        "https://www.mountainproject.com/area/105734010/sugarloaf-area",
+        name="Sugar Loaf (Kyburz, CA)",
+        lat=38.7738,
+        lon=-120.2974,
+        notes="Highway 50 crags",
+        mountain_project_url="https://www.mountainproject.com/area/105734010/sugarloaf-area",
+        climbing_types=(ClimbingType.SPORT, ClimbingType.TRAD),
     ),
     ClimbingArea(
-        "Cosumnes River Gorge (Placerville, CA)",
-        38.6524,
-        -120.7066,
-        "Placerville granite",
-        "https://www.mountainproject.com/area/105733956/cosumnes-river-gorge",
+        name="Cosumnes River Gorge (Placerville, CA)",
+        lat=38.6524,
+        lon=-120.7066,
+        notes="Placerville granite",
+        mountain_project_url="https://www.mountainproject.com/area/105733956/cosumnes-river-gorge",
+        climbing_types=(ClimbingType.TRAD, ClimbingType.TOP_ROPE),
     ),
     ClimbingArea(
-        "Lovers Leap (Strawberry, CA)",
-        38.8006,
-        -120.1399,
-        "Strawberry multi-pitch",
-        "https://www.mountainproject.com/area/105733959/lovers-leap",
+        name="Lovers Leap (Strawberry, CA)",
+        lat=38.8006,
+        lon=-120.1399,
+        notes="Strawberry multi-pitch",
+        mountain_project_url="https://www.mountainproject.com/area/105733959/lovers-leap",
+        climbing_types=(ClimbingType.TRAD, ClimbingType.BOULDER),
     ),
     ClimbingArea(
-        "South Lake Tahoe Crags (South Lake Tahoe, CA)",
-        38.9399,
-        -119.9772,
-        "Tahoe basin",
-        "https://www.mountainproject.com/area/110561742/south-shore",
+        name="South Lake Tahoe Crags (South Lake Tahoe, CA)",
+        lat=38.9399,
+        lon=-119.9772,
+        notes="Tahoe basin",
+        mountain_project_url="https://www.mountainproject.com/area/110561742/south-shore",
+        climbing_types=ALL_CLIMBING_TYPES,
     ),
     ClimbingArea(
-        "The Emeralds (Camp Spaulding, CA)",
-        39.3197,
-        -120.6394,
-        "Camp Spaulding area",
-        "https://www.mountainproject.com/area/105733929/the-emeralds",
+        name="The Emeralds (Camp Spaulding, CA)",
+        lat=39.3197,
+        lon=-120.6394,
+        notes="Camp Spaulding area",
+        mountain_project_url="https://www.mountainproject.com/area/105733929/the-emeralds",
+        climbing_types=(ClimbingType.SPORT,),
     ),
     ClimbingArea(
-        "The Grotto (Rawhide, CA)",
-        37.9491,
-        -120.4158,
-        "Rawhide basalt",
-        "https://www.mountainproject.com/area/105734135/the-grotto",
-        ROCK_TYPE_BASALT,
+        name="The Grotto (Rawhide, CA)",
+        lat=37.9491,
+        lon=-120.4158,
+        notes="Rawhide basalt",
+        mountain_project_url="https://www.mountainproject.com/area/105734135/the-grotto",
+        climbing_types=(ClimbingType.SPORT,),
+        rock_type=ROCK_TYPE_BASALT,
     ),
     ClimbingArea(
-        "Yosemite Valley (Yosemite, CA)",
-        37.7456,
-        -119.5936,
-        "Yosemite climbing",
-        "https://www.mountainproject.com/area/105833388/yosemite-valley",
+        name="Yosemite Valley (Yosemite, CA)",
+        lat=37.7456,
+        lon=-119.5936,
+        notes="Yosemite climbing",
+        mountain_project_url="https://www.mountainproject.com/area/105833388/yosemite-valley",
+        climbing_types=(ClimbingType.TRAD, ClimbingType.BOULDER),
     ),
     ClimbingArea(
-        "Castle Rock State Park",
-        37.2303,
-        -122.0956,
-        "Santa Cruz Mountains",
-        "https://www.mountainproject.com/area/105733890/castle-rock-and-sanborn-area",
-        ROCK_TYPE_SANDSTONE,
+        name="Castle Rock State Park",
+        lat=37.2303,
+        lon=-122.0956,
+        notes="Santa Cruz Mountains",
+        mountain_project_url="https://www.mountainproject.com/area/105733890/castle-rock-and-sanborn-area",
+        climbing_types=ALL_CLIMBING_TYPES,
+        rock_type=ROCK_TYPE_SANDSTONE,
     ),
     ClimbingArea(
-        "Auburn Quarry (Auburn, CA)",
-        38.91231,
-        -121.03567,
-        "Auburn limestone sport climbing",
-        "https://www.mountainproject.com/area/105733941/cave-valley-aka-auburn-quarry",
-        ROCK_TYPE_LIMESTONE,
+        name="Auburn Quarry (Auburn, CA)",
+        lat=38.91231,
+        lon=-121.03567,
+        notes="Auburn limestone sport climbing",
+        mountain_project_url="https://www.mountainproject.com/area/105733941/cave-valley-aka-auburn-quarry",
+        climbing_types=(ClimbingType.SPORT, ClimbingType.TOP_ROPE),
+        rock_type=ROCK_TYPE_LIMESTONE,
+    ),
+    ClimbingArea(
+        name="Rocklin (Deer Creek Park)",
+        lat=38.78712,
+        lon=-121.24077,
+        notes="Sacramento-area granite bouldering",
+        mountain_project_url="https://www.mountainproject.com/area/107254240/rocklin-deer-creek-park",
+        climbing_types=(ClimbingType.BOULDER,),
+    ),
+    ClimbingArea(
+        name="Giant Boulder Park (Rocklin, CA)",
+        lat=38.83052,
+        lon=-121.257,
+        notes="Rocklin neighborhood bouldering",
+        mountain_project_url="https://www.mountainproject.com/area/124724558/giant-boulder-park",
+        climbing_types=(ClimbingType.BOULDER,),
+    ),
+    ClimbingArea(
+        name="The Nut Tree Boulders (Vacaville, CA)",
+        lat=38.38524,
+        lon=-121.98691,
+        notes="Vacaville basalt bouldering",
+        mountain_project_url="https://www.mountainproject.com/area/105734016/the-nut-tree-boulders",
+        climbing_types=(ClimbingType.BOULDER,),
+        rock_type=ROCK_TYPE_BASALT,
+    ),
+    ClimbingArea(
+        name="Putah Creek (Vacaville, CA)",
+        lat=38.5174,
+        lon=-122.056,
+        notes="Creekside Vacaville bouldering",
+        mountain_project_url="https://www.mountainproject.com/area/105795790/putah-creek",
+        climbing_types=(ClimbingType.BOULDER,),
+    ),
+    ClimbingArea(
+        name="Pie Shop Bouldering (South Lake Tahoe, CA)",
+        lat=38.87495,
+        lon=-120.01322,
+        notes="South Lake Tahoe bouldering",
+        mountain_project_url="https://www.mountainproject.com/area/119445828/pie-shop-bouldering",
+        climbing_types=(ClimbingType.BOULDER,),
     ),
 ]
 
@@ -151,6 +226,37 @@ def parse_date(value: str) -> dt.date:
         return dt.date.fromisoformat(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError("date must use YYYY-MM-DD") from exc
+
+
+def parse_climbing_types(values: list[str] | None) -> tuple[ClimbingType, ...]:
+    if not values:
+        return DEFAULT_CLIMBING_TYPES
+
+    if any(value.lower() == ALL_CLIMBING_TYPES_TOKEN for value in values):
+        return ALL_CLIMBING_TYPES
+
+    selected = []
+    for value in values:
+        climbing_type = CLIMBING_TYPE_ALIASES.get(value.lower())
+        if climbing_type is None:
+            valid_values = ", ".join([ALL_CLIMBING_TYPES_TOKEN, *CLIMBING_TYPE_ALIASES])
+            raise argparse.ArgumentTypeError(f"climbing type must be one of: {valid_values}")
+        if climbing_type not in selected:
+            selected.append(climbing_type)
+
+    return tuple(selected)
+
+
+def climbing_type_values(climbing_types: tuple[ClimbingType, ...]) -> list[str]:
+    return [climbing_type.value for climbing_type in climbing_types]
+
+
+def filter_areas_by_climbing_type(
+    areas: list[ClimbingArea],
+    selected_types: tuple[ClimbingType, ...],
+) -> list[ClimbingArea]:
+    selected = set(selected_types)
+    return [area for area in areas if selected.intersection(area.climbing_types)]
 
 
 def miles_between(origin: tuple[float, float], dest: tuple[float, float]) -> float:
@@ -431,6 +537,7 @@ def rank_area_from_daily(
         "mountain_project_url": area.mountain_project_url,
         "weather_verification_url": weather_verification_url(area),
         "rock_type": area.rock_type,
+        "climbing_types": climbing_type_values(area.climbing_types),
         "date": date.isoformat(),
         "lat": area.lat,
         "lon": area.lon,
@@ -457,13 +564,14 @@ def rank_week(
     refresh: bool = False,
     days: int = HTML_REPORT_DAYS,
     cache_dir: Path = CACHE_DIR,
+    areas: list[ClimbingArea] = AREAS,
 ) -> tuple[dict[str, list[dict[str, Any]]], list[str]]:
     dates = report_dates(start_date, days)
     end_date = dates[-1]
     rows_by_date = {date.isoformat(): [] for date in dates}
     failures = []
 
-    for area in AREAS:
+    for area in areas:
         try:
             daily = fetch_forecast(
                 area,
@@ -536,6 +644,7 @@ def render_html_report(
     failures: list[str],
     background_image_path: str = HTML_BACKGROUND_IMAGE_PATH.as_posix(),
     by_distance: bool = False,
+    selected_climbing_types: tuple[ClimbingType, ...] = DEFAULT_CLIMBING_TYPES,
 ) -> str:
     generated_at = dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
     best_area = rows[0]["name"] if rows else "No areas ranked"
@@ -543,6 +652,8 @@ def render_html_report(
         "date": date.isoformat(),
         "generatedAt": generated_at,
         "bestArea": best_area,
+        "allClimbingTypes": climbing_type_values(ALL_CLIMBING_TYPES),
+        "selectedClimbingTypes": climbing_type_values(selected_climbing_types),
         "defaultOrigin": "Folsom, CA",
         "initialSortByDistance": by_distance,
         "travelSpeedMph": ESTIMATED_TRAVEL_SPEED_MPH,
@@ -643,6 +754,14 @@ def render_html_report(
       display: flex;
       align-items: center;
       gap: 8px;
+      color: var(--muted);
+      font-weight: 700;
+    }}
+    .type-controls {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
       color: var(--muted);
       font-weight: 700;
     }}
@@ -826,6 +945,7 @@ def render_html_report(
         <input id="sort-by-distance" type="checkbox">
         Sort by distance
       </label>
+      <div id="type-controls" class="type-controls" aria-label="Climbing type filters"></div>
     </section>
     <section id="report-grid" class="report-grid"></section>
     <section id="warnings"></section>
@@ -835,6 +955,7 @@ def render_html_report(
     const reportData = JSON.parse(document.getElementById("report-data").textContent);
     const originSelect = document.getElementById("origin-select");
     const sortByDistance = document.getElementById("sort-by-distance");
+    const typeControls = document.getElementById("type-controls");
     const reportGrid = document.getElementById("report-grid");
     const originSummary = document.getElementById("origin-summary");
     const bestSummary = document.getElementById("best-summary");
@@ -897,13 +1018,24 @@ def render_html_report(
     function selectedOrigin() {{
       return reportData.origins.find((origin) => origin.name === originSelect.value) || reportData.origins[0];
     }}
+    function selectedClimbingTypes() {{
+      return Array.from(typeControls.querySelectorAll("input[type=checkbox]:checked"))
+        .map((input) => input.value);
+    }}
+    function matchesSelectedTypes(area) {{
+      const selected = selectedClimbingTypes();
+      if (!selected.length) return false;
+      return (area.climbing_types || []).some((type) => selected.includes(type));
+    }}
 
     function rankedAreas() {{
       const origin = selectedOrigin();
-      const areas = reportData.areas.map((area) => ({{
-        ...area,
-        distance_miles: milesBetween(origin, area),
-      }}));
+      const areas = reportData.areas
+        .filter(matchesSelectedTypes)
+        .map((area) => ({{
+          ...area,
+          distance_miles: milesBetween(origin, area),
+        }}));
 
       if (sortByDistance.checked) {{
         areas.sort((a, b) => a.distance_miles - b.distance_miles || b.score - a.score);
@@ -962,6 +1094,18 @@ def render_html_report(
       option.selected = origin.name === reportData.defaultOrigin;
       originSelect.appendChild(option);
     }}
+    for (const type of reportData.allClimbingTypes) {{
+      const label = document.createElement("label");
+      label.className = "control";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = type;
+      input.checked = reportData.selectedClimbingTypes.includes(type);
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(type));
+      typeControls.appendChild(label);
+      input.addEventListener("change", render);
+    }}
 
     sortByDistance.checked = reportData.initialSortByDistance;
     originSelect.addEventListener("change", render);
@@ -980,6 +1124,7 @@ def write_html_report(
     failures: list[str],
     output_path: Path,
     by_distance: bool = False,
+    selected_climbing_types: tuple[ClimbingType, ...] = DEFAULT_CLIMBING_TYPES,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     background_path = os.path.relpath(HTML_BACKGROUND_IMAGE_PATH, start=output_path.parent)
@@ -989,6 +1134,7 @@ def write_html_report(
         failures,
         background_image_path=Path(background_path).as_posix(),
         by_distance=by_distance,
+        selected_climbing_types=selected_climbing_types,
     )
     output_path.write_text(report, encoding="utf-8")
     return output_path
@@ -1000,6 +1146,7 @@ def render_week_html_report(
     failures: list[str],
     background_image_path: str = HTML_BACKGROUND_IMAGE_PATH.as_posix(),
     by_distance: bool = False,
+    selected_climbing_types: tuple[ClimbingType, ...] = DEFAULT_CLIMBING_TYPES,
 ) -> str:
     generated_at = dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
     dates = [date.isoformat() for date in report_dates(start_date)]
@@ -1012,6 +1159,8 @@ def render_week_html_report(
         "dates": dates,
         "generatedAt": generated_at,
         "bestArea": best_area,
+        "allClimbingTypes": climbing_type_values(ALL_CLIMBING_TYPES),
+        "selectedClimbingTypes": climbing_type_values(selected_climbing_types),
         "defaultOrigin": "Folsom, CA",
         "initialSortByDistance": by_distance,
         "overviewTopAreaCount": OVERVIEW_TOP_AREA_COUNT,
@@ -1117,6 +1266,14 @@ def render_week_html_report(
       display: flex;
       align-items: center;
       gap: 8px;
+      color: var(--muted);
+      font-weight: 700;
+    }}
+    .type-controls {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
       color: var(--muted);
       font-weight: 700;
     }}
@@ -1308,6 +1465,7 @@ def render_week_html_report(
     <section class="controls" aria-label="Report controls">
       <label class="control" for="origin-select">Origin <select id="origin-select"></select></label>
       <label class="control"><input id="sort-by-distance" type="checkbox"> Sort day reports by distance</label>
+      <div id="type-controls" class="type-controls" aria-label="Climbing type filters"></div>
     </section>
     <nav id="tabs" class="tabs" aria-label="Forecast days"></nav>
     <section id="overview"></section>
@@ -1319,6 +1477,7 @@ def render_week_html_report(
     const reportData = JSON.parse(document.getElementById("report-data").textContent);
     const originSelect = document.getElementById("origin-select");
     const sortByDistance = document.getElementById("sort-by-distance");
+    const typeControls = document.getElementById("type-controls");
     const tabs = document.getElementById("tabs");
     const overview = document.getElementById("overview");
     const reportGrid = document.getElementById("report-grid");
@@ -1368,12 +1527,23 @@ def render_week_html_report(
     function selectedOrigin() {{
       return reportData.origins.find((origin) => origin.name === originSelect.value) || reportData.origins[0];
     }}
+    function selectedClimbingTypes() {{
+      return Array.from(typeControls.querySelectorAll("input[type=checkbox]:checked"))
+        .map((input) => input.value);
+    }}
+    function matchesSelectedTypes(area) {{
+      const selected = selectedClimbingTypes();
+      if (!selected.length) return false;
+      return (area.climbing_types || []).some((type) => selected.includes(type));
+    }}
     function areasForDate(dateText) {{
       const origin = selectedOrigin();
-      const areas = (reportData.days[dateText] || []).map((area) => ({{
-        ...area,
-        distance_miles: milesBetween(origin, area),
-      }}));
+      const areas = (reportData.days[dateText] || [])
+        .filter(matchesSelectedTypes)
+        .map((area) => ({{
+          ...area,
+          distance_miles: milesBetween(origin, area),
+        }}));
       if (sortByDistance.checked) {{
         areas.sort((a, b) => a.distance_miles - b.distance_miles || b.score - a.score);
       }} else {{
@@ -1482,6 +1652,18 @@ def render_week_html_report(
       option.selected = origin.name === reportData.defaultOrigin;
       originSelect.appendChild(option);
     }}
+    for (const type of reportData.allClimbingTypes) {{
+      const label = document.createElement("label");
+      label.className = "control";
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = type;
+      input.checked = reportData.selectedClimbingTypes.includes(type);
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(type));
+      typeControls.appendChild(label);
+      input.addEventListener("change", render);
+    }}
     sortByDistance.checked = reportData.initialSortByDistance;
     originSelect.addEventListener("change", render);
     sortByDistance.addEventListener("change", render);
@@ -1498,6 +1680,7 @@ def write_week_html_report(
     failures: list[str],
     output_path: Path,
     by_distance: bool = False,
+    selected_climbing_types: tuple[ClimbingType, ...] = DEFAULT_CLIMBING_TYPES,
 ) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     background_path = os.path.relpath(HTML_BACKGROUND_IMAGE_PATH, start=output_path.parent)
@@ -1507,6 +1690,7 @@ def write_week_html_report(
         failures,
         background_image_path=Path(background_path).as_posix(),
         by_distance=by_distance,
+        selected_climbing_types=selected_climbing_types,
     )
     output_path.write_text(report, encoding="utf-8")
     return output_path
@@ -1548,18 +1732,44 @@ def main(argv: list[str] | None = None) -> int:
         default=CACHE_DIR,
         help="Directory for cached weather API responses",
     )
+    parser.add_argument(
+        "--types",
+        nargs="+",
+        metavar="TYPE",
+        help="Climbing types to include: sport, trad, top-rope, boulder, or all. Defaults to sport trad top-rope.",
+    )
     args = parser.parse_args(argv)
+    try:
+        selected_climbing_types = parse_climbing_types(args.types)
+    except argparse.ArgumentTypeError as exc:
+        parser.error(str(exc))
+    selected_areas = filter_areas_by_climbing_type(AREAS, selected_climbing_types)
 
     if args.html is not None:
-        rows_by_date, failures = rank_week(args.date, FOLSOM_CA, refresh=args.refresh, cache_dir=args.cache_dir)
+        html_data_types = ALL_CLIMBING_TYPES if args.types is None else selected_climbing_types
+        html_areas = filter_areas_by_climbing_type(AREAS, html_data_types)
+        rows_by_date, failures = rank_week(
+            args.date,
+            FOLSOM_CA,
+            refresh=args.refresh,
+            cache_dir=args.cache_dir,
+            areas=html_areas,
+        )
         output_path = Path(args.html) if args.html else Path(DEFAULT_HTML_REPORT_TEMPLATE.format(date=args.date.isoformat()))
-        write_week_html_report(rows_by_date, args.date, failures, output_path, by_distance=args.by_distance)
+        write_week_html_report(
+            rows_by_date,
+            args.date,
+            failures,
+            output_path,
+            by_distance=args.by_distance,
+            selected_climbing_types=selected_climbing_types,
+        )
         print(f"Wrote HTML report to {output_path}")
         return 1 if failures and not any(rows_by_date.values()) else 0
 
     rows = []
     failures = []
-    for area in AREAS:
+    for area in selected_areas:
         try:
             rows.append(rank_area(area, args.date, FOLSOM_CA, refresh=args.refresh, cache_dir=args.cache_dir))
         except RuntimeError as exc:
@@ -1568,7 +1778,17 @@ def main(argv: list[str] | None = None) -> int:
     sort_rows(rows, by_distance=args.by_distance)
 
     if args.json:
-        print(json.dumps({"date": args.date.isoformat(), "areas": rows, "errors": failures}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "date": args.date.isoformat(),
+                    "selected_climbing_types": climbing_type_values(selected_climbing_types),
+                    "areas": rows,
+                    "errors": failures,
+                },
+                indent=2,
+            )
+        )
     else:
         print_table(rows, args.date)
         if failures:

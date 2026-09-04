@@ -50,6 +50,13 @@ COLD_PENALTY_PER_DEGREE_F = 2.0
 MAX_COLD_PENALTY = 30.0
 WIND_PENALTY_PER_MPH = 1.5
 MAX_WIND_PENALTY = 20.0
+WEATHER_VERIFICATION_URL = "https://forecast.weather.gov/MapClick.php?lat={lat:.5f}&lon={lon:.5f}"
+ROCK_TYPE_GRANITE = "granite"
+ROCK_TYPE_BASALT = "basalt"
+ROCK_TYPE_LIMESTONE = "limestone"
+ROCK_TYPE_SANDSTONE = "sandstone"
+SANDSTONE_DRYOUT_DAYS_AFTER_RAIN = 2
+SANDSTONE_RAIN_THRESHOLD_IN = 0.0
 
 
 @dataclass(frozen=True)
@@ -58,19 +65,84 @@ class ClimbingArea:
     lat: float
     lon: float
     notes: str
+    mountain_project_url: str
+    rock_type: str = ROCK_TYPE_GRANITE
 
 
 AREAS = [
-    ClimbingArea("Donner Summit", 39.3269, -120.3186, "Truckee granite"),
-    ClimbingArea("Sugar Loaf (Kyburz, CA)", 38.7738, -120.2974, "Highway 50 crags"),
-    ClimbingArea("Cosumnes River Gorge (Placerville, CA)", 38.6524, -120.7066, "Placerville granite"),
-    ClimbingArea("Lovers Leap (Strawberry, CA)", 38.8006, -120.1399, "Strawberry multi-pitch"),
-    ClimbingArea("South Lake Tahoe Crags (South Lake Tahoe, CA)", 38.9399, -119.9772, "Tahoe basin"),
-    ClimbingArea("The Emeralds (Camp Spaulding, CA)", 39.3197, -120.6394, "Camp Spaulding area"),
-    ClimbingArea("The Grotto (Rawhide, CA)", 37.9491, -120.4158, "Rawhide basalt"),
-    ClimbingArea("Yosemite Valley (Yosemite, CA)", 37.7456, -119.5936, "Yosemite climbing"),
-    ClimbingArea("Castle Rock State Park", 37.2303, -122.0956, "Santa Cruz Mountains"),
-    ClimbingArea("Auburn Quarry (Auburn, CA)", 38.91231, -121.03567, "Auburn limestone sport climbing"),
+    ClimbingArea(
+        "Donner Summit",
+        39.3269,
+        -120.3186,
+        "Truckee granite",
+        "https://www.mountainproject.com/area/105733935/donner-summit",
+    ),
+    ClimbingArea(
+        "Sugar Loaf (Kyburz, CA)",
+        38.7738,
+        -120.2974,
+        "Highway 50 crags",
+        "https://www.mountainproject.com/area/105734010/sugarloaf-area",
+    ),
+    ClimbingArea(
+        "Cosumnes River Gorge (Placerville, CA)",
+        38.6524,
+        -120.7066,
+        "Placerville granite",
+        "https://www.mountainproject.com/area/105733956/cosumnes-river-gorge",
+    ),
+    ClimbingArea(
+        "Lovers Leap (Strawberry, CA)",
+        38.8006,
+        -120.1399,
+        "Strawberry multi-pitch",
+        "https://www.mountainproject.com/area/105733959/lovers-leap",
+    ),
+    ClimbingArea(
+        "South Lake Tahoe Crags (South Lake Tahoe, CA)",
+        38.9399,
+        -119.9772,
+        "Tahoe basin",
+        "https://www.mountainproject.com/area/110561742/south-shore",
+    ),
+    ClimbingArea(
+        "The Emeralds (Camp Spaulding, CA)",
+        39.3197,
+        -120.6394,
+        "Camp Spaulding area",
+        "https://www.mountainproject.com/area/105733929/the-emeralds",
+    ),
+    ClimbingArea(
+        "The Grotto (Rawhide, CA)",
+        37.9491,
+        -120.4158,
+        "Rawhide basalt",
+        "https://www.mountainproject.com/area/105734135/the-grotto",
+        ROCK_TYPE_BASALT,
+    ),
+    ClimbingArea(
+        "Yosemite Valley (Yosemite, CA)",
+        37.7456,
+        -119.5936,
+        "Yosemite climbing",
+        "https://www.mountainproject.com/area/105833388/yosemite-valley",
+    ),
+    ClimbingArea(
+        "Castle Rock State Park",
+        37.2303,
+        -122.0956,
+        "Santa Cruz Mountains",
+        "https://www.mountainproject.com/area/105733890/castle-rock-and-sanborn-area",
+        ROCK_TYPE_SANDSTONE,
+    ),
+    ClimbingArea(
+        "Auburn Quarry (Auburn, CA)",
+        38.91231,
+        -121.03567,
+        "Auburn limestone sport climbing",
+        "https://www.mountainproject.com/area/105733941/cave-valley-aka-auburn-quarry",
+        ROCK_TYPE_LIMESTONE,
+    ),
 ]
 
 
@@ -136,6 +208,16 @@ def forecast_url(area: ClimbingArea, start_date: dt.date, end_date: dt.date) -> 
         "end_date": end_date.isoformat(),
     }
     return "https://api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(params)
+
+
+def weather_verification_url(area: ClimbingArea) -> str:
+    return WEATHER_VERIFICATION_URL.format(lat=area.lat, lon=area.lon)
+
+
+def forecast_start_for_area(area: ClimbingArea, start_date: dt.date) -> dt.date:
+    if area.rock_type == ROCK_TYPE_SANDSTONE:
+        return start_date - dt.timedelta(days=SANDSTONE_DRYOUT_DAYS_AFTER_RAIN)
+    return start_date
 
 
 def cache_path_for(url: str, cache_dir: Path = CACHE_DIR) -> Path:
@@ -226,6 +308,42 @@ def value_at(daily: dict[str, Any], key: str, index: int, default: float = 0.0) 
     return default if value is None else float(value)
 
 
+def sandstone_wet_weather_checker(
+    area: ClimbingArea,
+    date: dt.date,
+    daily: dict[str, Any],
+) -> str | None:
+    if area.rock_type != ROCK_TYPE_SANDSTONE:
+        return None
+
+    dates = daily.get("time") or []
+    precipitation_values = daily.get("precipitation_sum") or []
+    last_rain_date = None
+    for index, date_text in enumerate(dates):
+        try:
+            candidate_date = dt.date.fromisoformat(date_text)
+        except ValueError:
+            continue
+        if candidate_date > date:
+            continue
+        precipitation = 0.0
+        if index < len(precipitation_values) and precipitation_values[index] is not None:
+            precipitation = float(precipitation_values[index])
+        if precipitation > SANDSTONE_RAIN_THRESHOLD_IN:
+            last_rain_date = candidate_date
+
+    if last_rain_date is None:
+        return None
+
+    days_since_rain = (date - last_rain_date).days
+    if 0 <= days_since_rain <= SANDSTONE_DRYOUT_DAYS_AFTER_RAIN:
+        if days_since_rain == 0:
+            return "sandstone wet weather: rain today"
+        return f"sandstone wet weather: {days_since_rain} day(s) after rain"
+
+    return None
+
+
 def climbability_score(
     temp_max_f: float,
     precipitation_in: float,
@@ -276,8 +394,17 @@ def rank_area(
     refresh: bool = False,
     cache_dir: Path = CACHE_DIR,
 ) -> dict[str, Any]:
-    daily = fetch_daily_forecast(area, date, refresh=refresh, cache_dir=cache_dir)
-    return rank_area_from_daily(area, date, daily, 0, origin)
+    daily = fetch_forecast(
+        area,
+        forecast_start_for_area(area, date),
+        date,
+        refresh=refresh,
+        cache_dir=cache_dir,
+    )
+    date_key = date.isoformat()
+    available_dates = daily.get("time") or []
+    index = available_dates.index(date_key) if date_key in available_dates else 0
+    return rank_area_from_daily(area, date, daily, index, origin)
 
 
 def rank_area_from_daily(
@@ -293,10 +420,17 @@ def rank_area_from_daily(
     precipitation_probability = value_at(daily, "precipitation_probability_max", index)
     wind = value_at(daily, "wind_speed_10m_max", index)
     score, reasons = climbability_score(temp_max, precipitation, precipitation_probability, wind)
+    sandstone_reason = sandstone_wet_weather_checker(area, date, daily)
+    if sandstone_reason:
+        score = MIN_CLIMBABILITY_SCORE
+        reasons = [sandstone_reason]
     distance_miles = miles_between(origin, (area.lat, area.lon))
 
     return {
         "name": area.name,
+        "mountain_project_url": area.mountain_project_url,
+        "weather_verification_url": weather_verification_url(area),
+        "rock_type": area.rock_type,
         "date": date.isoformat(),
         "lat": area.lat,
         "lon": area.lon,
@@ -331,7 +465,13 @@ def rank_week(
 
     for area in AREAS:
         try:
-            daily = fetch_forecast(area, start_date, end_date, refresh=refresh, cache_dir=cache_dir)
+            daily = fetch_forecast(
+                area,
+                forecast_start_for_area(area, start_date),
+                end_date,
+                refresh=refresh,
+                cache_dir=cache_dir,
+            )
         except RuntimeError as exc:
             failures.append(str(exc))
             continue
@@ -559,6 +699,14 @@ def render_html_report(
       font-size: 1.25rem;
       letter-spacing: 0;
     }}
+    a {{
+      color: inherit;
+      text-decoration-color: rgba(31, 122, 77, 0.45);
+      text-underline-offset: 3px;
+    }}
+    a:hover {{
+      text-decoration-color: currentColor;
+    }}
     .notes, .reason {{
       margin: 4px 0 0;
       color: var(--muted);
@@ -735,6 +883,16 @@ def render_html_report(
       if (score >= 50) return "iffy";
       return "poor";
     }}
+    function areaLink(area) {{
+      const name = escapeHtml(area.name);
+      if (!area.mountain_project_url) return name;
+      return `<a href="${{escapeHtml(area.mountain_project_url)}}" target="_blank" rel="noopener noreferrer">${{name}}</a>`;
+    }}
+    function weatherLink(area, text) {{
+      const label = escapeHtml(text);
+      if (!area.weather_verification_url) return label;
+      return `<a href="${{escapeHtml(area.weather_verification_url)}}" target="_blank" rel="noopener noreferrer" title="Verify with NOAA/NWS">${{label}}</a>`;
+    }}
 
     function selectedOrigin() {{
       return reportData.origins.find((origin) => origin.name === originSelect.value) || reportData.origins[0];
@@ -779,7 +937,7 @@ def render_html_report(
       <article class="area-card ${{scoreClass(area.score)}}">
         <div class="rank">#${{index + 1}}</div>
         <div class="area-main">
-          <h2>${{escapeHtml(area.name)}}</h2>
+          <h2>${{areaLink(area)}}</h2>
           <p class="notes">${{escapeHtml(area.notes)}}</p>
           <p class="reason">${{reasons}}</p>
         </div>
@@ -789,9 +947,9 @@ def render_html_report(
         </div>
         <dl class="metrics">
           <div><dt>Miles/Time</dt><dd>${{formatDistanceTime(area.distance_miles)}}</dd></div>
-          <div><dt>Temp</dt><dd>${{temp}}</dd></div>
-          <div><dt>Precip</dt><dd>${{precip}}</dd></div>
-          <div><dt>Wind</dt><dd>${{wind}}</dd></div>
+          <div><dt>Temp</dt><dd>${{weatherLink(area, temp)}}</dd></div>
+          <div><dt>Precip</dt><dd>${{weatherLink(area, precip)}}</dd></div>
+          <div><dt>Wind</dt><dd>${{weatherLink(area, wind)}}</dd></div>
         </dl>
       </article>`;
       }}).join("");
@@ -1226,6 +1384,16 @@ def render_week_html_report(
     function scoreTooltip(area) {{
       return `${{area.name}}\\nScore: ${{area.score}}%\\nTemp: ${{area.temp_min_f.toFixed(0)}}-${{area.temp_max_f.toFixed(0)}}F\\nPrecip: ${{area.precipitation_in.toFixed(2)}} in / ${{area.precipitation_probability.toFixed(0)}}%\\nWind: ${{area.wind_mph.toFixed(0)}} mph\\nDistance: ${{formatDistanceTime(area.distance_miles)}}\\n${{area.reasons.join("; ")}}`;
     }}
+    function areaLink(area) {{
+      const name = escapeHtml(area.name);
+      if (!area.mountain_project_url) return name;
+      return `<a href="${{escapeHtml(area.mountain_project_url)}}" target="_blank" rel="noopener noreferrer">${{name}}</a>`;
+    }}
+    function weatherLink(area, text) {{
+      const label = escapeHtml(text);
+      if (!area.weather_verification_url) return label;
+      return `<a href="${{escapeHtml(area.weather_verification_url)}}" target="_blank" rel="noopener noreferrer" title="Verify with NOAA/NWS">${{label}}</a>`;
+    }}
     function overviewAreas() {{
       const byName = new Map();
       for (const dateText of reportData.dates) {{
@@ -1263,7 +1431,7 @@ def render_week_html_report(
           if (!dayArea) return `<td></td>`;
           return `<td><div class="score-cell ${{scoreClass(dayArea.score)}}" title="${{escapeHtml(scoreTooltip(dayArea))}}">${{dayArea.score}}%</div></td>`;
         }}).join("");
-        return `<tr><td><strong>${{escapeHtml(area.name)}}</strong><br><span>${{escapeHtml(area.notes)}}</span></td>${{cells}}</tr>`;
+        return `<tr><td><strong>${{areaLink(area)}}</strong><br><span>${{escapeHtml(area.notes)}}</span></td>${{cells}}</tr>`;
       }}).join("");
       overview.innerHTML = `<section class="overview"><h2>Top ${{reportData.overviewTopAreaCount}} Places This Week</h2><table><thead><tr><th>Place</th>${{reportData.dates.map((dateText) => `<th>${{dayLabel(dateText)}}</th>`).join("")}}</tr></thead><tbody>${{rows}}</tbody></table></section>`;
       reportGrid.innerHTML = "";
@@ -1278,13 +1446,13 @@ def render_week_html_report(
         const wind = `${{area.wind_mph.toFixed(0)}} mph`;
         return `<article class="area-card ${{scoreClass(area.score)}}">
           <div class="rank">#${{index + 1}}</div>
-          <div class="area-main"><h2>${{escapeHtml(area.name)}}</h2><p class="notes">${{escapeHtml(area.notes)}}</p><p class="reason">${{reasons}}</p></div>
+          <div class="area-main"><h2>${{areaLink(area)}}</h2><p class="notes">${{escapeHtml(area.notes)}}</p><p class="reason">${{reasons}}</p></div>
           <div class="score-block"><div class="score">${{area.score}}%</div><div class="score-label">climbable</div></div>
           <dl class="metrics">
             <div><dt>Miles/Time</dt><dd>${{formatDistanceTime(area.distance_miles)}}</dd></div>
-            <div><dt>Temp</dt><dd>${{temp}}</dd></div>
-            <div><dt>Precip</dt><dd>${{precip}}</dd></div>
-            <div><dt>Wind</dt><dd>${{wind}}</dd></div>
+            <div><dt>Temp</dt><dd>${{weatherLink(area, temp)}}</dd></div>
+            <div><dt>Precip</dt><dd>${{weatherLink(area, precip)}}</dd></div>
+            <div><dt>Wind</dt><dd>${{weatherLink(area, wind)}}</dd></div>
           </dl>
         </article>`;
       }}).join("");

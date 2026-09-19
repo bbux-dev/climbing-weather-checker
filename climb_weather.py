@@ -40,7 +40,8 @@ BASE_CLIMBABILITY_SCORE = 100.0
 MIN_CLIMBABILITY_SCORE = 0
 MAX_CLIMBABILITY_SCORE = 100
 IDEAL_MAX_TEMP_F = 75.0
-COLD_MAX_TEMP_F = 45.0
+IDEAL_MIN_TEMP_F = 50.0
+UNCLIMBABLE_COLD_TEMP_F = 35.0
 STRONG_WIND_MPH = 25.0
 RAIN_PENALTY_PER_INCH = 120.0
 MAX_RAIN_PENALTY = 70.0
@@ -48,8 +49,8 @@ PRECIP_PROBABILITY_PENALTY_PER_PERCENT = 0.4
 MAX_PRECIP_PROBABILITY_PENALTY = 40.0
 HEAT_PENALTY_PER_DEGREE_F = 4.0
 MAX_HEAT_PENALTY = 50.0
-COLD_PENALTY_PER_DEGREE_F = 2.0
-MAX_COLD_PENALTY = 30.0
+COLD_PENALTY_EXPONENT = 2.1
+MAX_COLD_PENALTY = 100.0
 WIND_PENALTY_PER_MPH = 1.5
 MAX_WIND_PENALTY = 20.0
 FORECAST_REQUEST_TIMEOUT_SECONDS = 20
@@ -482,6 +483,23 @@ def sandstone_wet_weather_checker(
     return None
 
 
+def cold_penalty_for(temp_max_f: float) -> float:
+    """Penalty that curves from 0 at the ideal low to a full 100 at the unclimbable low.
+
+    The curve accelerates, so the first few degrees below IDEAL_MIN_TEMP_F cost little
+    and each degree after that costs more: 45F loses 10 points, 40F loses 43, and
+    UNCLIMBABLE_COLD_TEMP_F and below score 0 no matter how good the rest of the day is.
+    """
+    if temp_max_f >= IDEAL_MIN_TEMP_F:
+        return 0.0
+    if temp_max_f <= UNCLIMBABLE_COLD_TEMP_F:
+        return MAX_COLD_PENALTY
+
+    cold_span = IDEAL_MIN_TEMP_F - UNCLIMBABLE_COLD_TEMP_F
+    cold_fraction = (IDEAL_MIN_TEMP_F - temp_max_f) / cold_span
+    return MAX_COLD_PENALTY * cold_fraction**COLD_PENALTY_EXPONENT
+
+
 def climbability_score(
     temp_max_f: float,
     precipitation_in: float,
@@ -509,9 +527,8 @@ def climbability_score(
         score -= heat_penalty
         reasons.append(f"high {temp_max_f:.0f}F")
 
-    if temp_max_f < COLD_MAX_TEMP_F:
-        cold_penalty = min(MAX_COLD_PENALTY, (COLD_MAX_TEMP_F - temp_max_f) * COLD_PENALTY_PER_DEGREE_F)
-        score -= cold_penalty
+    if temp_max_f < IDEAL_MIN_TEMP_F:
+        score -= cold_penalty_for(temp_max_f)
         reasons.append(f"cold high {temp_max_f:.0f}F")
 
     if wind_mph > STRONG_WIND_MPH:
@@ -520,7 +537,7 @@ def climbability_score(
         reasons.append(f"wind {wind_mph:.0f} mph")
 
     if not reasons:
-        reasons.append("dry and <= 75F")
+        reasons.append(f"dry and {IDEAL_MIN_TEMP_F:.0f}-{IDEAL_MAX_TEMP_F:.0f}F")
 
     return max(MIN_CLIMBABILITY_SCORE, min(MAX_CLIMBABILITY_SCORE, round(score))), reasons
 

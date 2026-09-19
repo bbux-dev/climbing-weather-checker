@@ -56,8 +56,9 @@ Use a different cache directory:
 
 The baseline rule is:
 
-- dry forecast and max temperature `<= 75F` gives `100%`
-- precipitation amount, precipitation probability, heat above `75F`, cold highs below `45F`, and strong wind subtract from the score
+- dry forecast and a max temperature between `50F` and `75F` gives `100%`
+- precipitation amount, precipitation probability, heat above `75F`, and strong wind subtract from the score
+- cold highs below `50F` subtract on an accelerating curve: `45F` loses 10 points, `40F` loses 43, and a high of `35F` or below scores `0%`
 - sandstone areas are forced to `0%` on rain days and for the next 2 days after rain
 
 Results are sorted by highest climbability, then shortest straight-line distance from Folsom, CA.

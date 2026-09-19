@@ -14,10 +14,13 @@ from climb_weather import (
     ClimbingType,
     ClimingType,
     climbability_score,
+    cold_penalty_for,
     estimated_drive_time_hours,
     filter_areas_by_climbing_type,
     format_distance_time,
     HTML_BACKGROUND_IMAGE_PATH,
+    IDEAL_MIN_TEMP_F,
+    MAX_COLD_PENALTY,
     ClimbingArea,
     forecast_url,
     fetch_forecast,
@@ -36,6 +39,7 @@ from climb_weather import (
     render_html_report,
     sandstone_wet_weather_checker,
     sort_rows,
+    UNCLIMBABLE_COLD_TEMP_F,
     weather_verification_url,
     write_html_report,
     write_cached_payload,
@@ -43,7 +47,7 @@ from climb_weather import (
 
 
 class ClimbabilityScoreTest(unittest.TestCase):
-    def test_dry_and_75_or_cooler_is_100_percent(self):
+    def test_dry_and_in_the_ideal_temp_band_is_100_percent(self):
         score, reasons = climbability_score(
             temp_max_f=75,
             precipitation_in=0,
@@ -52,7 +56,52 @@ class ClimbabilityScoreTest(unittest.TestCase):
         )
 
         self.assertEqual(score, 100)
-        self.assertEqual(reasons, ["dry and <= 75F"])
+        self.assertEqual(reasons, ["dry and 50-75F"])
+
+    def test_ideal_low_temp_is_still_100_percent(self):
+        score, reasons = climbability_score(
+            temp_max_f=IDEAL_MIN_TEMP_F,
+            precipitation_in=0,
+            precipitation_probability=0,
+            wind_mph=10,
+        )
+
+        self.assertEqual(score, 100)
+        self.assertEqual(reasons, ["dry and 50-75F"])
+
+    def test_cold_penalty_curve_accelerates_below_the_ideal_low(self):
+        expected = {49: 100, 48: 99, 45: 90, 42: 73, 40: 57, 38: 37, 36: 13}
+
+        for temp_max_f, expected_score in expected.items():
+            with self.subTest(temp_max_f=temp_max_f):
+                score, reasons = climbability_score(
+                    temp_max_f=temp_max_f,
+                    precipitation_in=0,
+                    precipitation_probability=0,
+                    wind_mph=10,
+                )
+
+                self.assertEqual(score, expected_score)
+                self.assertIn(f"cold high {temp_max_f}F", reasons)
+
+    def test_unclimbable_cold_scores_zero_on_an_otherwise_perfect_day(self):
+        for temp_max_f in (UNCLIMBABLE_COLD_TEMP_F, 20, 0, -10):
+            with self.subTest(temp_max_f=temp_max_f):
+                score, _ = climbability_score(
+                    temp_max_f=temp_max_f,
+                    precipitation_in=0,
+                    precipitation_probability=0,
+                    wind_mph=0,
+                )
+
+                self.assertEqual(score, 0)
+
+    def test_cold_penalty_for_matches_the_curve_endpoints(self):
+        self.assertEqual(cold_penalty_for(IDEAL_MIN_TEMP_F), 0.0)
+        self.assertEqual(cold_penalty_for(60), 0.0)
+        self.assertEqual(cold_penalty_for(UNCLIMBABLE_COLD_TEMP_F), MAX_COLD_PENALTY)
+        self.assertEqual(cold_penalty_for(10), MAX_COLD_PENALTY)
+        self.assertAlmostEqual(cold_penalty_for(45), 10.0, places=1)
 
     def test_heat_reduces_score(self):
         score, reasons = climbability_score(
@@ -420,7 +469,7 @@ def sample_ranked_row(date: str = "2026-09-05"):
         "precipitation_in": 0,
         "precipitation_probability": 0,
         "wind_mph": 8,
-        "reasons": ["dry and <= 75F"],
+        "reasons": ["dry and 50-75F"],
         "notes": "Granite & trees",
     }
 

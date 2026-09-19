@@ -1,5 +1,7 @@
 # Climbing Weather Checker
 
+**[View the live report →](https://bbux-dev.github.io/climbing-weather-checker/)**
+
 Prototype CLI for ranking nearby climbing areas by forecast climbability.
 
 ## Usage

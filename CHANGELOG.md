@@ -14,6 +14,7 @@ This project tracks user-facing climbing weather features as they are added.
 - Add `--types` filtering with boulder-only areas excluded by default.
 - Add Sacramento-area bouldering locations for Rocklin, Giant Boulder Park, Nut Tree Boulders, Putah Creek, and Pie Shop Bouldering.
 - Add Mount Tam Boulders (Mill Valley, CA) as a Marin volcanic bouldering location.
+- Retry weather API requests up to 3 times so a single timeout or transient server error no longer drops an area from the report.
 
 ## 2026-09-03
 

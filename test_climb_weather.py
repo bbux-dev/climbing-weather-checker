@@ -1,4 +1,6 @@
 import datetime as dt
+import io
+import json
 import os
 import tempfile
 import unittest
@@ -19,11 +21,13 @@ from climb_weather import (
     ClimbingArea,
     forecast_url,
     fetch_forecast,
+    FORECAST_REQUEST_ATTEMPTS,
     forecast_start_for_area,
     miles_between,
     rank_area,
     rank_area_from_daily,
     read_cached_payload,
+    request_forecast_payload,
     ROCK_TYPE_BASALT,
     ROCK_TYPE_SANDSTONE,
     render_week_html_report,
@@ -271,10 +275,52 @@ class ClimbabilityScoreTest(unittest.TestCase):
             payload = {"daily": {"time": [date.isoformat()]}}
             write_cached_payload(forecast_url(area, date, date), payload, cache_dir)
 
-            with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("offline")):
+            with patch("climb_weather.time.sleep"), patch(
+                "urllib.request.urlopen", side_effect=urllib.error.URLError("offline")
+            ):
                 daily = fetch_forecast(area, date, date, refresh=True, cache_dir=cache_dir)
 
             self.assertEqual(daily, payload["daily"])
+
+    def test_request_retries_after_a_timeout_and_then_succeeds(self):
+        payload = {"daily": {"time": ["2026-09-19"]}}
+
+        with patch("climb_weather.time.sleep") as sleep, patch(
+            "urllib.request.urlopen",
+            side_effect=[TimeoutError("handshake timed out"), fake_urlopen_response(payload)],
+        ) as urlopen:
+            result = request_forecast_payload("https://api.open-meteo.com/v1/forecast?test=1")
+
+        self.assertEqual(result, payload)
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertEqual(sleep.call_count, 1)
+
+    def test_request_gives_up_after_the_attempt_limit(self):
+        with patch("climb_weather.time.sleep"), patch(
+            "urllib.request.urlopen", side_effect=TimeoutError("handshake timed out")
+        ) as urlopen:
+            with self.assertRaises(TimeoutError):
+                request_forecast_payload("https://api.open-meteo.com/v1/forecast?test=1")
+
+        self.assertEqual(urlopen.call_count, FORECAST_REQUEST_ATTEMPTS)
+
+    def test_request_retries_transient_server_errors_but_not_client_errors(self):
+        payload = {"daily": {"time": ["2026-09-19"]}}
+        url = "https://api.open-meteo.com/v1/forecast?test=1"
+
+        with patch("climb_weather.time.sleep"), patch(
+            "urllib.request.urlopen",
+            side_effect=[http_error(url, 503), fake_urlopen_response(payload)],
+        ) as urlopen:
+            self.assertEqual(request_forecast_payload(url), payload)
+        self.assertEqual(urlopen.call_count, 2)
+
+        with patch("climb_weather.time.sleep"), patch(
+            "urllib.request.urlopen", side_effect=http_error(url, 404)
+        ) as urlopen:
+            with self.assertRaises(urllib.error.HTTPError):
+                request_forecast_payload(url)
+        self.assertEqual(urlopen.call_count, 1)
 
     def test_html_report_escapes_content_and_uses_background(self):
         rows = [sample_ranked_row()]
@@ -331,6 +377,30 @@ class ClimbabilityScoreTest(unittest.TestCase):
         self.assertIn('target="_blank"', report)
         self.assertIn('rel="noopener noreferrer"', report)
         self.assertIn("Sort day reports by distance", report)
+
+
+class FakeResponse:
+    """Stand-in for the object urlopen returns, used as a context manager."""
+
+    def __init__(self, payload):
+        self.body = json.dumps(payload).encode("utf-8")
+
+    def read(self):
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+
+def fake_urlopen_response(payload):
+    return FakeResponse(payload)
+
+
+def http_error(url: str, code: int) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError(url, code, "error", {}, io.BytesIO(b"{}"))
 
 
 def sample_ranked_row(date: str = "2026-09-05"):

@@ -12,6 +12,7 @@ import math
 import os
 from pathlib import Path
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -51,6 +52,10 @@ COLD_PENALTY_PER_DEGREE_F = 2.0
 MAX_COLD_PENALTY = 30.0
 WIND_PENALTY_PER_MPH = 1.5
 MAX_WIND_PENALTY = 20.0
+FORECAST_REQUEST_TIMEOUT_SECONDS = 20
+FORECAST_REQUEST_ATTEMPTS = 3
+FORECAST_RETRY_BACKOFF_SECONDS = 2.0
+RETRYABLE_HTTP_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 WEATHER_VERIFICATION_URL = "https://forecast.weather.gov/MapClick.php?lat={lat:.5f}&lon={lon:.5f}"
 ROCK_TYPE_GRANITE = "granite"
 ROCK_TYPE_BASALT = "basalt"
@@ -357,6 +362,27 @@ def write_cached_payload(url: str, payload: dict[str, Any], cache_dir: Path = CA
     cache_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def request_forecast_payload(url: str) -> dict[str, Any]:
+    """Request a forecast payload, retrying timeouts and transient server errors."""
+    request = urllib.request.Request(url, headers={"User-Agent": "climb-weather-prototype/0.1"})
+
+    for attempt in range(1, FORECAST_REQUEST_ATTEMPTS + 1):
+        is_last_attempt = attempt == FORECAST_REQUEST_ATTEMPTS
+        try:
+            with urllib.request.urlopen(request, timeout=FORECAST_REQUEST_TIMEOUT_SECONDS) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if is_last_attempt or exc.code not in RETRYABLE_HTTP_STATUS_CODES:
+                raise
+        except (urllib.error.URLError, TimeoutError):
+            if is_last_attempt:
+                raise
+
+        time.sleep(FORECAST_RETRY_BACKOFF_SECONDS * attempt)
+
+    raise RuntimeError(f"gave up after {FORECAST_REQUEST_ATTEMPTS} forecast attempts")
+
+
 def fetch_forecast(
     area: ClimbingArea,
     start_date: dt.date,
@@ -369,11 +395,8 @@ def fetch_forecast(
     if cached_payload is not None and not refresh:
         return daily_from_payload(area, start_date, end_date, cached_payload)
 
-    request = urllib.request.Request(url, headers={"User-Agent": "climb-weather-prototype/0.1"})
-
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        payload = request_forecast_payload(url)
     except urllib.error.HTTPError as exc:
         if cached_payload is not None:
             return daily_from_payload(area, start_date, end_date, cached_payload)

@@ -74,6 +74,9 @@ The report embeds its weather and crag data as JSON, so the page can recalculate
 
 ## Cache
 
+Failed forecast requests are retried up to 3 times with a growing pause, so a single network timeout or
+transient server error does not drop an area from the report.
+
 Forecast API responses are cached locally in `.weather_cache/` by request URL. Re-running the same date or 7-day HTML range uses cached data unless `--refresh` is passed.
 
 ## GitHub Pages

@@ -77,6 +77,49 @@ This is the most common request ("add weather for <Mountain Project URL>"). Step
 
 README only needs an edit if the change affects usage, not for a new area.
 
+## Scoring model
+
+`climbability_score()` starts every day at `BASE_CLIMBABILITY_SCORE` (100) and subtracts penalties,
+then clamps to 0-100. Every threshold is a module-level constant near the top of the file — change
+the constant, never a literal in the function.
+
+| Factor | Rule | Constants |
+| --- | --- | --- |
+| Ideal band | A dry day with a max temp from `50F` to `75F` scores 100% | `IDEAL_MIN_TEMP_F`, `IDEAL_MAX_TEMP_F` |
+| Heat | Linear, 4 points per degree above 75F, capped at 50 | `HEAT_PENALTY_PER_DEGREE_F`, `MAX_HEAT_PENALTY` |
+| Cold | Accelerating power curve below 50F, reaching a full 100 at 35F | `COLD_PENALTY_EXPONENT`, `MAX_COLD_PENALTY`, `UNCLIMBABLE_COLD_TEMP_F` |
+| Rain amount | 120 points per inch, capped at 70 | `RAIN_PENALTY_PER_INCH`, `MAX_RAIN_PENALTY` |
+| Rain chance | 0.4 points per percent, capped at 40 | `PRECIP_PROBABILITY_PENALTY_PER_PERCENT`, `MAX_PRECIP_PROBABILITY_PENALTY` |
+| Wind | 1.5 points per mph above 25 mph, capped at 20 | `WIND_PENALTY_PER_MPH`, `MAX_WIND_PENALTY` |
+| Wet sandstone | Overrides everything: `0%` on a rain day and for 2 days after | `SANDSTONE_DRYOUT_DAYS_AFTER_RAIN` |
+
+The cold curve is the one non-linear rule, in `cold_penalty_for()`. It is
+`MAX_COLD_PENALTY * fraction ** COLD_PENALTY_EXPONENT`, where `fraction` is how far the high has
+fallen from `IDEAL_MIN_TEMP_F` toward `UNCLIMBABLE_COLD_TEMP_F`. The exponent of `2.1` was fitted so
+a `45F` high loses 10 points; the resulting shape is:
+
+```
+50F 100%   48F 99%   45F 90%   42F 73%   40F 57%   38F 37%   36F 13%   35F and below 0%
+```
+
+Heat and cold are deliberately asymmetric — cold can zero out a day on its own, heat cannot drop it
+below 50%.
+
+### Changing the scoring
+
+Tuning these curves is a normal request and the numbers are a matter of taste, so do not just pick
+values. Print a table of the proposed curve across a realistic temperature or precipitation range
+and get agreement on the shape before editing the code. When a curve is pinned to specific anchor
+points the user names, say plainly which anchors the chosen shape hits exactly and which it misses.
+
+After a change, add tests asserting the score at each anchor point, and update:
+
+- the Scoring section of `README.md`
+- the reason strings in `climbability_score()` (for example `"dry and 50-75F"`), and the two tests
+  that assert them
+- `CHANGELOG.md`
+- this table
+
 ## Conventions
 
 - Named module-level constants instead of magic numbers — every scoring threshold and penalty is a

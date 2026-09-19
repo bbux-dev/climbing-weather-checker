@@ -24,6 +24,7 @@ from climb_weather import (
     rank_area,
     rank_area_from_daily,
     read_cached_payload,
+    ROCK_TYPE_BASALT,
     ROCK_TYPE_SANDSTONE,
     render_week_html_report,
     parse_climbing_types,
@@ -118,6 +119,14 @@ class ClimbabilityScoreTest(unittest.TestCase):
             self.assertEqual(area.climbing_types, (ClimbingType.BOULDER,))
             self.assertAlmostEqual(area.lat, coords[0])
             self.assertAlmostEqual(area.lon, coords[1])
+
+    def test_mount_tam_boulders_is_included(self):
+        mount_tam = next(area for area in AREAS if area.name == "Mount Tam Boulders (Mill Valley, CA)")
+
+        self.assertEqual(mount_tam.climbing_types, (ClimbingType.BOULDER,))
+        self.assertAlmostEqual(mount_tam.lat, 37.91055)
+        self.assertAlmostEqual(mount_tam.lon, -122.59474)
+        self.assertEqual(mount_tam.rock_type, ROCK_TYPE_BASALT)
 
     def test_default_climbing_type_filter_excludes_boulder_only_locations(self):
         selected_types = parse_climbing_types(None)

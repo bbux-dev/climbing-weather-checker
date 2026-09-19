@@ -218,6 +218,15 @@ AREAS = [
         mountain_project_url="https://www.mountainproject.com/area/119445828/pie-shop-bouldering",
         climbing_types=(ClimbingType.BOULDER,),
     ),
+    ClimbingArea(
+        name="Mount Tam Boulders (Mill Valley, CA)",
+        lat=37.91055,
+        lon=-122.59474,
+        notes="Marin volcanic bouldering",
+        mountain_project_url="https://www.mountainproject.com/area/106326205/mount-tam-boulders",
+        climbing_types=(ClimbingType.BOULDER,),
+        rock_type=ROCK_TYPE_BASALT,
+    ),
 ]
 
 
